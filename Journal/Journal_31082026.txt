@@ -1,0 +1,20 @@
+31/08/2026
+
+Today I began the project of creating my own programming language
+called WhiteFang. I chose this project because I have wanted to make my
+own programming language for a long time (ever since I was told by a
+teacher they had done it themselves as a uni project) and because it
+feels like a good project to learn a lot about computing, memory and
+data structures. I also hope to make this language extensive enough to
+use to implement some of the algorithms I learn about in AA.
+
+At this point I have used Claude to help me lay out a concrete roadmap
+with what I need to do, and made some simple stylistic choices around
+the syntax of my language. I have had Claude generate some markdown
+documents to keep track of my decision making.
+
+I had originally decided to use C to compile the language but have now
+decided to use compiled custom bytecode and execute on a VM. While this
+will be less performant, I feel I will learn more doing it this way. I
+did also consider creating a compiler from scratch but I felt this
+would take too long and be outside the required scope of this project.
