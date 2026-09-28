@@ -15,7 +15,13 @@ Key decisions:
 - Static typing, explicit annotations (no inference in M0)
 - Value types only, no heap in M0
 - Functions are `func name(type param, ...) { body } -> returnType`
-- Variables are `let type: name = value;`
+- Variables are `let type: name = value;`, declared inside a function
+  body only — no global variables in M0
+- `_PI`, `_E`, `_G`, `_R2` are reserved constant-literal keywords (like
+  `true`/`false`), not variables
+- `PRINT` is a reserved keyword for the builtin print function (§6),
+  written in plain uppercase rather than the constants' leading-
+  underscore style
 
 ---
 
@@ -48,8 +54,15 @@ indentation rules — blocks use braces, see below).
 
 **Blocks**: delimited by `{` `}`.
 
-**Keywords (M0)**: `func let if else while return true false int float
-bool char void`
+**Keywords (M0)**: `func let if else while return true false _PI _E
+_G _R2 PRINT int float bool char void`
+
+`_PI`, `_E`, `_G`, `_R2` are reserved constant-literal keywords (§3) —
+like `true`/`false`, they can never be used as a variable, parameter,
+or function name. `PRINT` (§6) is reserved the same way, for the same
+reason — it can never be declared as a function, since its behavior
+(dispatching on argument type) can't be replicated by a user-defined
+function in this language anyway.
 
 ---
 
@@ -61,6 +74,10 @@ bool char void`
 | `float` | `double`     | 64-bit                          |
 | `bool`  | custom       | `true` / `false` literals       |
 | `char`  | `char`       | single character, `'a'` literal |
+
+Char literal escapes: `\n \t \r \\ \' \0` — anything else after a
+backslash inside `'...'` is a lexer error. (Settled in M1; see
+DECISIONS.md.)
 
 No implicit conversions in M0 — `int` and `float` do not mix without an
 explicit cast (cast syntax TBD, not needed until a test case demands it).
@@ -75,24 +92,21 @@ explicit cast (cast syntax TBD, not needed until a test case demands it).
 
 ```
 let int: a = 5;
-let float: pi = 3.14159;
+let float: radius = 3.14159;
 let bool: ready = true;
 ```
 
-**Multiple declarations in one `let`**, sharing a type, in two forms:
-
-Shared initializer (one `=`, applies to every name in the list):
+Each `let` declares exactly **one** variable — no multiple names in a
+single declaration. Declaring several variables takes several `let`
+statements:
 ```
-let int: a, b, c = 5;      /` a = 5, b = 5, c = 5
+let int: a = 5;
+let int: b = 6;
+let int: c = 7;
 ```
-
-Per-name initializer (each name has its own `=`):
-```
-let int: a = 5, b = 6, c = 7;
-```
-
-Mixing the two forms in one declaration (e.g. `a, b = 5, c = 7`) is not
-defined in M0 — not needed yet, disallow as a parse error.
+(An earlier draft allowed multiple names per `let`, in a shared- and a
+per-name-initializer form; removed for grammar simplicity — see
+DECISIONS.md.)
 
 Declaration without initializer: **not allowed.** Every `let` requires
 an initializer; `let int: a;` is a compile error in M0 (no default/zero
@@ -106,6 +120,31 @@ x = 10;
 No `const`/`mut` distinction in M0 (everything declared with `let` is
 reassignable). Immutability can be a later milestone if wanted.
 
+**No global variables in M0.** Every `let` must be inside a function
+body; a `let` at the top level of the file is a compile error. (An
+earlier draft allowed top-level `let`s as globals — removed once it
+became clear the only thing motivating them was the built-in constants
+below, which don't need variable storage at all; see DECISIONS.md.)
+
+**Built-in constants**: `_PI`, `_E`, `_G`, `_R2` are reserved keywords
+(§1) that behave exactly like float literals — usable anywhere a
+`float` literal is, wherever they appear in a program:
+
+| Name | Type | Value |
+|---|---|---|
+| `_PI` | `float` | `3.141592653589793` |
+| `_E` | `float` | `2.718281828459045` |
+| `_G` | `float` | `1.618033988749895` (golden ratio, φ) |
+| `_R2` | `float` | `1.414213562373095` (√2) |
+
+Because they're reserved words rather than identifiers, they can never
+be declared as a variable, parameter, or function name — `let float:
+_PI = 3;` is a **syntax** error (an identifier was expected, `_PI` is a
+keyword), not a semantic one, the same way `let float: true = 3;`
+would be. There's no shadowing rule to state, and no need for an
+immutability caveat: `_PI = 4;` is a syntax error too, since `_PI`
+can't appear on the left of `=` at all.
+
 ---
 
 ## 4. Functions
@@ -116,7 +155,7 @@ Declared with a `func` keyword, then name, params are C-style typed
 ```
 func add(int a, int b) { return a + b; } -> int
 
-func greet() { print(42); } -> void
+func greet() { PRINT(42); } -> void
 ```
 
 - Params are always explicitly typed (`int a`, not `a: int`).
@@ -146,19 +185,19 @@ Precedence: standard C precedence for the above operators.
 **If / else:**
 ```
 if (x > 0) {
-    print(x);
+    PRINT(x);
 } else {
-    print(0);
+    PRINT(0);
 }
 ```
 `else if` via nested `if` in the `else` branch, standard C-style chaining:
 ```
 if (x > 0) {
-    print(1);
+    PRINT(1);
 } else if (x < 0) {
-    print(-1);
+    PRINT(-1);
 } else {
-    print(0);
+    PRINT(0);
 }
 ```
 
@@ -175,11 +214,12 @@ return expr;   /` non-void function
 return;        /` void function
 ```
 
-**Print** — M0 needs some way to observe output for tests. `print` is a
-builtin function (not a dedicated statement keyword), so it composes
-with the existing function-call grammar.
+**Print** — M0 needs some way to observe output for tests. `PRINT` is a
+reserved keyword (§1) written with call syntax — `PRINT(x);` has the
+same shape as a user function call, even though `PRINT` itself can
+never be declared as one.
 ```
-print(x);       /` int, float, bool, or char
+PRINT(x);       /` int, float, bool, or char
 ```
 Codegen maps it to the right `printf` format specifier per argument
 type (resolved at compile time since types are static).
@@ -203,7 +243,7 @@ func fib(int n) {
 func start() {
     let int: i = 0;
     while (i < 10) {
-        print(fib(i));
+        PRINT(fib(i));
         i = i + 1;
     }
     return 0;
@@ -216,7 +256,7 @@ func start() {
 
 Deferred to later milestones: strings, arrays, `for` loops, structs,
 generics, closures/first-class functions, modules/imports, error
-handling, GC/ownership, standard library beyond `print`.
+handling, GC/ownership, standard library beyond `PRINT`.
 
 ## 9. Stretch goals (post-M0)
 
@@ -248,8 +288,11 @@ broader stdlib) stays unscheduled beyond "later."
    default values — every `let` requires an initializer.
 5. ~~`void` return type~~ **Resolved:** every function writes an
    explicit `-> void`, arrow is never omitted.
-6. ~~`print`~~ **Resolved:** builtin function, not a dedicated
-   statement keyword.
-7. ~~Multiple declarations~~ **Resolved:** `let type: a, b, c = 5;`
-   (shared init) and `let type: a = 5, b = 6, c = 7;` (per-name init)
-   are both valid; mixing the two forms is a parse error in M0.
+6. ~~`print`~~ **Resolved:** builtin, written with call syntax rather
+   than a dedicated statement keyword; later renamed `PRINT` and made
+   a reserved keyword during M3 design (see DECISIONS.md).
+7. ~~Multiple declarations~~ **Resolved:** removed. Each `let`
+   declares exactly one variable; an earlier multi-name draft
+   (`let type: a, b, c = 5;` / `let type: a = 5, b = 6, c = 7;`) was
+   dropped for grammar simplicity during M2 design (see
+   DECISIONS.md).

@@ -8,10 +8,10 @@ feels like a good project to learn a lot about computing, memory and
 data structures. I also hope to make this language extensive enough to
 use to implement some of the algorithms I learn about in AA.
 
-At this point I have used Claude to help me lay out a concrete roadmap
+At this point I have used Claude to help me lay out a concrete road map
 with what I need to do, and made some simple stylistic choices around
 the syntax of my language. I have had Claude generate some markdown
-documents to keep track of my decision making.
+documents to keep track of my decision making ([[SPEC]] and [[DECISIONS]]).
 
 I had originally decided to use C to compile the language but have now
 decided to use compiled custom bytecode and execute on a VM. While this

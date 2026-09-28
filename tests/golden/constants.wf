@@ -1,0 +1,9 @@
+func start() {
+    PRINT(_PI);
+    PRINT(_E);
+    PRINT(_G);
+    PRINT(_R2);
+    let char: c = 'w';
+    PRINT(c);
+    return 0;
+} -> int

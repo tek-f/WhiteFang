@@ -1,0 +1,7 @@
+func f() {
+    if (true) {
+        return 1;
+    }
+} -> int
+
+func start() { return f(); } -> int

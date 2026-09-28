@@ -1,0 +1,15 @@
+func fib(int n) {
+    if (n <= 1) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+} -> int
+
+func start() {
+    let int: i = 0;
+    while (i < 10) {
+        PRINT(fib(i));
+        i = i + 1;
+    }
+    return 0;
+} -> int

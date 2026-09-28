@@ -1,0 +1,3 @@
+func f() { return 0; } -> int
+func f() { return 1; } -> int
+func start() { return 0; } -> int

@@ -1,0 +1,11 @@
+func start() {
+    let bool: a = true && false;
+    let bool: b = true || false;
+    let bool: c = !a;
+    let bool: d = (1 < 2) && (3 > 2);
+    PRINT(a);
+    PRINT(b);
+    PRINT(c);
+    PRINT(d);
+    return 0;
+} -> int

@@ -78,15 +78,35 @@ Bare `let int: a;` is a compile error. Removes an entire class of
 "used before initialized" bugs from M0 without needing definite-
 assignment analysis — the simplest correct answer for a first pass.
 
-### Multiple declarations: shared-initializer vs per-name forms
+### ~~Multiple declarations: shared-initializer vs per-name forms~~ — SUPERSEDED
 
-`let int: a, b, c = 5;` (all get 5) and `let int: a = 5, b = 6, c = 7;`
-(each own value) are both valid; mixing the two forms in one
-declaration is a parse error. Chosen because both forms are genuinely
-useful shorthand and neither is a special case of the other — but
-combining them (`a, b = 5, c = 7`) has no obvious meaning (does `5`
-apply to `a` and `b`, or just `b`?), so it's excluded rather than
-guessed at.
+Original call: `let int: a, b, c = 5;` (all get 5) and
+`let int: a = 5, b = 6, c = 7;` (each own value) both valid; mixing
+the two in one declaration a parse error. Chosen because both forms
+were genuinely useful shorthand and neither was a special case of the
+other. **Superseded by "one variable per `let`" below** — kept here
+for history, not current behavior.
+
+### Variable declarations: exactly one name per `let` (multi-declare removed)
+
+Each `let` now declares a single variable; the two multi-name forms
+above are gone. Surfaced during M2 (parser) design, not a change made
+for its own sake: implementing the old grammar required the parser to
+read the first name, then branch on whether the *next* token was `,`
+(shared-init form, keep collecting names until an `=` shows up) or `=`
+(per-name form, commit to repeating `name = expr, name = expr, ...`) —
+real lookahead-dependent parsing logic, plus a transient buffer to
+hold the collected names, plus the "mixing is a parse error" rule,
+which existed purely to patch the ambiguity *between* the two forms
+rather than expressing anything about the language itself.
+
+None of that complexity taught anything not already covered elsewhere
+in the parser (precedence climbing and the assignment-vs-expression-
+statement lookahead already exercise "resolve ambiguity with
+lookahead"). Cost accepted: declaring several variables now takes
+several `let` lines instead of one — a minor loss of shorthand, not a
+loss of expressiveness. `Stmt`'s var-decl case is also simpler for it:
+one name + one initializer expression, not an array of bindings.
 
 ### Functions: `func name(type param, ...) { body } -> returnType`
 
@@ -109,7 +129,40 @@ need a special case.
 `print(x);` uses ordinary call syntax rather than a dedicated `print
 x;` statement form. Simpler grammar — one call-expression rule handles
 both user functions and `print`, no separate statement production
-needed just for output.
+needed just for output. (Still true after the rename below — `PRINT`
+kept the call-shaped syntax; only the name and its lexer/AST treatment
+changed.)
+
+### `print` renamed `PRINT`, made a reserved keyword
+
+Surfaced during M3's function-call-validation design: nothing stopped
+a user writing `func print(...) { ... }`, and since `print`'s real
+behavior (dispatching on argument type across `int`/`float`/`bool`/
+`char`) can't be replicated by any user-defined function in this
+language, allowing that name to be shadowed/redefined was more likely
+to cause confusion than serve any real use case.
+
+Rather than add a semantic check ("reject a function declared with
+this specific name"), made `print` a genuine reserved keyword — lexed
+specially, exactly like `_PI`/`_E`/`_G`/`_R2` — so the same guarantee
+falls out of the grammar for free: the lexer never produces an
+identifier token for it, so `func print(...)` fails to parse for the
+same structural reason `let float: _PI = 3;` does. No semantic check
+needed, same win as the earlier global-variables removal.
+
+Naming: considered `_PRINT` for consistency with the constants'
+leading-underscore convention, but a leading underscore immediately
+before a call's `(` read poorly at the call site (`_PRINT(x);`).
+Landed on plain uppercase instead — `PRINT` — which still reads as
+clearly non-ordinary (no lowercase user identifier looks like it)
+without the awkward punctuation-before-parenthesis. This means
+WhiteFang now has two different builtin-marking conventions (leading-
+underscore-uppercase for constants, plain uppercase for the one
+builtin function) rather than one unified rule — accepted because a
+function call is already visually distinguished from a bare value by
+its trailing `(...)`, so the two categories don't need to look
+identical to each other, only each needs to look distinct from
+ordinary user-chosen names.
 
 ### Entry point is `start`, not `main`
 
@@ -139,6 +192,250 @@ distinctiveness budget was better spent on comments/functions/entry
 point; operators are high-traffic tokens where deviating from C has
 the highest ongoing cost (every expression touches them) for
 comparatively low novelty payoff.
+
+### ~~Global variables added to M0 (not deferred)~~ — SUPERSEDED
+
+Original call: globals as a small, purely additive extension on top of
+the frame-relative locals design — a separate `globals[]` array, two
+new opcodes, a second name-lookup tier. **Superseded by "global
+variables removed" below** — kept here for history, not current
+behavior.
+
+### ~~Built-in global constants: `_PI`, `_E`, `_G`~~ — SUPERSEDED
+
+Original call: `_PI`/`_E`/`_G` as three pre-populated entries in
+`globals[]`, redeclaring one a compile error, `_PI = 4;` technically
+legal since M0 has no immutability. **Superseded by "global variables
+removed" below**, which turns these into reserved literal keywords
+instead — kept here for history, not current behavior. The naming
+rationale carries forward unchanged: leading underscore + uppercase so
+they read as visibly distinct from ordinary identifiers; a `c` (speed
+of light) constant was considered and dropped, not needed for the
+course-algorithms use case that motivated this feature.
+
+### Global variables removed; `_PI`/`_E`/`_G` are reserved constant-literal keywords
+
+Surfaced during the M2 (parser) design pass, while working through
+which semantic checks (duplicate names, builtin redeclaration, type
+mismatches) belong in M2 vs. get deferred to M3. Global variables were
+only ever added to M0 to support the three built-in constants (see the
+superseded entries above) — nothing in the example program or any
+real use case needed a user-declared global. Once that was named
+explicitly, the better fix was visible: don't give the constants
+variable storage at all.
+
+`_PI`, `_E`, `_G` are now reserved keywords, lexed exactly like
+`true`/`false` (added to the keyword table, `SPEC.md` §1), and the
+parser turns each one directly into a float-literal AST node with the
+fixed value baked in — indistinguishable, from the AST onward, from
+writing the literal number itself. This is why they can never be
+shadowed or redeclared: not because of a semantic check anywhere, but
+because the lexer will never produce an identifier token for them in
+the first place, the same reason `let float: true = 3;` doesn't
+parse. A purely syntactic guarantee, not a semantic one — one less
+check that would otherwise have needed a symbol table to enforce.
+
+Consequences, all reductions in planned scope:
+- No global variables as a language feature in M0 at all (`SPEC.md`
+  §3) — every `let` must be inside a function body.
+- `docs/VM.md` §5 (global variables), the `GET_GLOBAL`/`SET_GLOBAL`
+  opcodes, the two-tier local-then-global name lookup, and the
+  `globals_init`/`global_count` `Program` fields are all removed —
+  see `docs/VM.md` for the updated (simpler) design.
+- The AST's top level (M2) no longer needs a `Decl`/`DeclKind` wrapper
+  distinguishing function vs. global-variable declarations — a
+  `Program` is just a list of function declarations.
+- The "no const/mut, so `_PI = 4;` is technically legal" caveat from
+  the superseded entry above is gone outright: `_PI = 4;` is now a
+  syntax error, not a runtime footgun.
+
+### Added `_R2` (√2) as a fourth built-in constant
+
+`_R2 = 1.414213562373095` (√2), added alongside `_PI`/`_E`/`_G` via
+the exact same mechanism — a reserved keyword (`SPEC.md` §1) the
+lexer recognizes and the parser converts directly into an
+`EXPR_FLOAT_LIT` node (see "Global variables removed" above). No new
+design decision here, just applying the established pattern to a
+fourth value.
+
+### Dockerize the VM (deferred until M3 produces a binary)
+
+Concrete decision, not just an idea: once M3 produces a working VM
+binary, package it with a multi-stage `Dockerfile` — a build stage
+with gcc that compiles the VM (and bytecode compiler), copying the
+resulting binary into a minimal runtime image (`alpine`, or `scratch`
+if statically linked). End result: `docker run whitefang program.wfb`
+runs a WhiteFang program with no local C toolchain required.
+
+Reasoning: the VM is a dependency-free C program, so this is low
+effort and low risk to the core language work. Value is reproducible
+build/execution environment and easy distribution/demo, not solving a
+portability problem C doesn't already have (a static binary is already
+portable on its own) — plus the user has a standing interest in
+containerization, so this doubles as a deliberate side-learning goal
+for the project, not just a checkbox.
+
+Not yet decided: whether the image wraps just the VM (taking
+pre-compiled `.wfb` bytecode as input) or the whole pipeline
+(WhiteFang source in, via lexer+parser+bytecode compiler+VM) — settle
+when M3 actually exists to wrap.
+
+### Build tooling: plain Makefile, C11, `-Wall -Wextra -Werror`
+
+Settled once M1 actually needed it, per the standing "decide when it's
+needed, not speculatively" rule. A hand-written `Makefile` rather than
+CMake/etc — the build is small (a handful of `.c` files, no external
+deps) and a generator adds indirection without paying for itself yet;
+revisit if the project outgrows it. `-Werror` on from the start so
+warnings can't silently accumulate across M1-M3. `cc`/`std=c11` rather
+than pinning gcc/clang specifically — no reason to require one over
+the other yet.
+
+### Lexer: source-slice tokens, no per-token allocation
+
+`Token` holds a `(start, length)` pointer into the original source
+buffer plus type and line — not an owned/copied string. Standard
+technique for a single-pass scanner (same approach as clox in
+*Crafting Interpreters*): avoids allocating per token, at the cost of
+requiring the source buffer to outlive every token derived from it.
+Acceptable since the compiler pipeline reads a whole file into memory
+up front and keeps it alive for the duration of that compile anyway.
+
+### Char literal escapes: `\n \t \r \\ \' \0`
+
+`docs/SPEC.md` §2 only specified the bare `'a'` form for char literals
+and didn't say whether escapes exist. Decided yes — a char type that
+can't represent a newline or backslash is too limited to be useful
+(e.g. can't `PRINT()` a newline char), and this is cheap to lex.
+Picked the common C-family escape set, minus anything not meaningful
+without strings (`\"` isn't needed since there's no string type yet).
+Flagged here rather than silently assumed; `SPEC.md` §2 updated to
+match. Revisit if a case needs an escape not in this list.
+
+### Lexer error tokens carry a static message, not an error code
+
+`TOKEN_ERROR`'s `(start, length)` point at a static diagnostic string
+literal instead of a slice of the source — reuses the same `Token`
+shape rather than adding a separate error-reporting path, at the cost
+of `Token` overloading what `start`/`length` mean depending on type.
+Good enough for M1 (a `lexdump` CLI tool is the only consumer so far);
+revisit if the parser needs richer diagnostics (e.g. column numbers,
+suggested fixes) in M2.
+
+### Added `INEG`/`FNEG` opcodes (gap found in `VM.md`'s original opcode set)
+
+`VM.md`'s opcode table (sec 6) covered `!` (`NOT`) but never gave unary
+`-` an opcode at all, even though `SPEC.md` §5 and the AST (`UN_NEG`)
+both already treat it as a real operator. Found while implementing
+expression codegen in M3. Fix: add `INEG`/`FNEG`, symmetric with every
+other operation already being type-specialized (`IADD`/`FADD`, etc.) —
+not a judgment call, just completing an already-established pattern,
+so applied directly rather than raised as an open question.
+
+### Missing-return check is syntactic, not full control-flow analysis
+
+A non-void function must have a `return expr;` as the literal last
+statement in its top-level body — checked once, after compiling the
+body, with no walking into `if`/`while` branches to look for it.
+Surfaced during M3 compiler design: without *some* check, a function
+that falls off the end without returning produces undefined behavior
+at runtime (whatever garbage is on the stack becomes the "return
+value"), which cuts against M0's general pattern of rejecting likely
+mistakes outright (required `let` initializers, no implicit
+int/float mixing, etc.).
+
+Accepted limitation: this rejects some functions that always return in
+practice but not as their literal last statement, e.g. an `if`/`else`
+where *both* branches return and nothing follows it — the check can't
+see into the branches to know that. Full definite-return analysis
+(proving every control-flow path returns) would handle that case
+correctly, but is real added machinery — noted here as a candidate
+future improvement, not built now, per the "smallest subset that
+works" pattern used throughout M0.
+
+### Dead-code cleanup: no bookkeeping emitted after an unconditional `return`
+
+`end_scope`'s `POP`/`POP_N` block-cleanup and `if`/`else`'s "jump over
+the else branch" are both skipped when the block in question's last
+statement is already a `return` — `RETURN`/`RETURN_VOID` already
+truncate the stack to `frame_base` and transfer control away
+unconditionally (`docs/VM.md` sec 4, "return bypasses block
+bookkeeping entirely"), so anything the compiler would otherwise emit
+right after one is dead: physically present in the chunk, but never
+reached at runtime, since control has already left. Found by comparing
+`bcdump`'s output against `docs/VM.md`'s own worked trace for
+`start` — the trace has no trailing `POP` after its final `RETURN`,
+and the first version of the compiler emitted one. Purely a cleanliness
+fix, not a correctness one: the dead instructions were harmless
+either way, just wasted bytes and confusing disassembly output.
+
+### VM: `start` is treated as an initial synthetic "call" (frame 0)
+
+Rather than special-case "the outermost call has no caller to return
+to," `vm_run` seeds the call-frame stack with one frame already on it
+(`frame_base = 0`, `return_chunk`/`return_ip` unused) before executing
+`start`. Every `RETURN`, including `start`'s own, then follows
+identical logic: truncate to the current frame's `frame_base`, push
+the return value, pop the frame, and check whether the frame count
+just reached zero — if so, halt using that return value as the process
+exit code (`docs/VM.md` sec 6, "No `HALT` opcode"); otherwise restore
+the caller's chunk/ip/`frame_base` from the frame that's now on top.
+No branch anywhere for "is this the first call" — it falls out of the
+same bookkeeping every other return already needs.
+
+### VM sizing and runtime error handling
+
+- Operand stack: 65536 `Value` slots; call-frame stack: 256 deep (the
+  starting point `docs/VM.md` sec 4 suggested). Both fixed, matching
+  the "generously-sized fixed stack, no precomputed per-chunk max"
+  choice in `docs/VM.md` sec 7 — confirmed generous enough by testing
+  200 levels of recursion (succeeds) against 1000 (cleanly reported as
+  stack overflow, not a segfault).
+- Runtime errors (stack overflow, integer division by zero) exit with
+  status 70, distinct from the compiler/parser's 65 — these are
+  failures at run time, not mistakes in the source.
+- Integer division/modulo by zero is checked explicitly and reported
+  as a clean runtime error, since C's own behavior there is undefined
+  (crash territory) — consistent with the project's general preference
+  for a clean error over undefined behavior. Float division by zero is
+  *not* checked: IEEE 754 defines it (`+-inf`/`nan`), so there's
+  nothing unsafe to guard against.
+- `PRINT` always appends a trailing newline; `PRINT_FLOAT` uses `%g`
+  formatting (e.g. `_PI` prints as `3.14159`, 6 significant figures,
+  not its full internal precision). Neither is specified in `SPEC.md`
+  — implemented as the obvious default rather than raised as an open
+  question; revisit if a program ever needs different formatting.
+
+### Golden-file test design
+
+Format settled: flat `<name>.wf` + `<name>.expected` pairs directly in
+`tests/golden/` (not a directory per test) — nothing in M0 needs a
+test to span multiple source files, so the extra nesting would buy
+nothing. Both stdout *and* exit code are checked, not just stdout as
+first sketched when this milestone plan was written — exit code is
+real observable behavior (`start`'s return value) and a print-less
+test would have nothing else to check. Exit code defaults to `0` so
+only tests that intentionally return something else need a
+`.exitcode` file.
+
+The runner (`tests/run_golden.sh`) is a bash script, not a C program —
+looping over files, running a subprocess, diffing text, and tallying
+results is exactly what a shell script is for, and writing it in C
+would mean reimplementing `diff` and `for` badly. It supports
+`--record` to (re)generate the reference output, so adding a test or
+absorbing a deliberate behavior change never means hand-editing an
+expected-output file.
+
+Compile-time and runtime error paths (`tests/golden/errors/`) are
+golden-tested too, but only their exit code (65 compile error, 70
+runtime error) is checked — not the exact stderr message text.
+Considered pinning the message text as well (stronger regression
+coverage, doubles as documentation of exact error wording), but
+rejected: it would mean every future wording improvement to an error
+message breaks tests unrelated to the actual bug being fixed. Exit
+code alone still locks in "this program is correctly rejected/crashes
+for the right general reason," which is the part actually worth
+protecting against regression.
 
 ### Stretch goals: strings, arrays, `for` loops (post-M0)
 
