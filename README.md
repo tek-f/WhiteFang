@@ -1,5 +1,13 @@
 # WhiteFang
 
+## Submission Details
+
+The video walkthrough and project report can both be found in the folder 'submission/'.
+To run the code, see the section "Running it with Docker". Otherwise see the section "Building natively".
+If available, I would recommnend running using docker.
+
+## Overview
+
 WhiteFang is a small, statically-typed, C-family programming language,
 built as a project for an Advanced Algorithms course. It compiles to a
 custom bytecode format and runs on a hand-written virtual machine —
