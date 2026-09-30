@@ -35,9 +35,11 @@ format are all designed and implemented — see `docs/VM.md`.
   When a past decision is revisited, mark the old entry superseded
   (don't delete it) and add a new entry — same pattern used for the
   transpile-to-C → bytecode/VM pivot.
-- `Journal/Journal_ddmmyyyy.txt` — the user's personal progress/
-  experience journal, one file per day, in their own voice. Write
-  entries only when asked, from what the user dictates — light
+- `Journal.md` — the user's personal progress/experience journal
+  (originally one file per day under `Journal/`, reorganized by the
+  user into a single file — Obsidian is in use on this repo, evidenced
+  by a local `.obsidian/` folder, gitignored). In their own voice.
+  Write entries only when asked, from what the user dictates — light
   copyedit (typos, paragraph breaks) is fine, don't rephrase or
   invent content.
 
@@ -52,14 +54,14 @@ format are all designed and implemented — see `docs/VM.md`.
 | stretch | Strings, arrays, `for` loops (roughly in that order — strings/arrays share a heap/ownership design question; `for` pairs naturally with arrays) | not started |
 | later, unscheduled | structs, generics, closures, modules, GC, broader stdlib | not started |
 
-## Planned, not yet scheduled
+## Docker
 
-- **Dockerize the VM** — concrete decision, deferred until M3 produces
-  a working binary. **That trigger is now met** (`./build/whitefang`
-  exists and works) — not yet acted on, needs the user to actually ask
-  for it. Multi-stage `Dockerfile`, build stage with gcc, minimal
-  runtime image. See `docs/DECISIONS.md` for full rationale and the
-  still-open question (wrap just the VM, or the whole pipeline).
+`Dockerfile` (multi-stage: an Alpine build stage compiles `whitefang`,
+the runtime stage is Alpine + just that binary, ~12MB total). Build
+with `docker build -t whitefang .`; run a program with
+`docker run --rm -v "$PWD":/work whitefang path/to/program.wf`
+(mounts the repo root at `/work` so a host-relative path works
+unchanged). See `docs/DECISIONS.md` for the reasoning.
 
 ## Testing strategy
 
@@ -78,7 +80,7 @@ logic/constants, 6 covering the major error paths.
 
 ```
 docs/            language spec, VM design, decisions log
-Journal/         user's personal progress journal
+Journal.md       user's personal progress journal
 src/
   lexer/         WhiteFang source -> tokens
   parser/        tokens -> AST
@@ -90,6 +92,7 @@ tests/
   golden/        .wf programs + expected stdout/exit code
     errors/      .wf programs that should fail -- exit code only
 examples/         example WhiteFang programs (non-test, currently empty)
+Dockerfile        multi-stage build -> minimal runtime image
 ```
 
 Build tooling: plain `Makefile`, C11, `cc -std=c11 -Wall -Wextra

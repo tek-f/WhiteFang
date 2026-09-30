@@ -258,27 +258,39 @@ lexer recognizes and the parser converts directly into an
 design decision here, just applying the established pattern to a
 fourth value.
 
-### Dockerize the VM (deferred until M3 produces a binary)
+### Dockerize the VM — done
 
-Concrete decision, not just an idea: once M3 produces a working VM
-binary, package it with a multi-stage `Dockerfile` — a build stage
-with gcc that compiles the VM (and bytecode compiler), copying the
-resulting binary into a minimal runtime image (`alpine`, or `scratch`
-if statically linked). End result: `docker run whitefang program.wfb`
-runs a WhiteFang program with no local C toolchain required.
+Built once M3 produced a working binary, as planned. `Dockerfile`:
+a build stage (`alpine` + `gcc`/`musl-dev`/`make`) runs `make
+whitefang`; the runtime stage is bare `alpine` plus just that
+compiled binary — ~12MB total. `docker build -t whitefang .`, then
+`docker run --rm -v "$PWD":/work whitefang path/to/program.wf` (the
+repo root mounted at `/work` so a host-relative path works
+unchanged). Verified against a passing program (`fib.wf`, correct
+output) and a failing one (`missing_start.wf`, correct exit 65) — both
+behave identically to the native build.
 
-Reasoning: the VM is a dependency-free C program, so this is low
-effort and low risk to the core language work. Value is reproducible
-build/execution environment and easy distribution/demo, not solving a
-portability problem C doesn't already have (a static binary is already
-portable on its own) — plus the user has a standing interest in
-containerization, so this doubles as a deliberate side-learning goal
-for the project, not just a checkbox.
+Reasoning unchanged from the original call: the binary is
+dependency-free, so this was low effort and low risk; value is
+reproducible build/execution environment and easy distribution/demo,
+plus a deliberate side-learning goal given the user's standing
+interest in containerization — not solving a portability problem C
+didn't already have.
 
-Not yet decided: whether the image wraps just the VM (taking
-pre-compiled `.wfb` bytecode as input) or the whole pipeline
-(WhiteFang source in, via lexer+parser+bytecode compiler+VM) — settle
-when M3 actually exists to wrap.
+Resolved along the way: the "wrap just the VM vs. the whole pipeline"
+question this entry originally left open turned out to be moot.
+There's no separate on-disk bytecode format (`docs/VM.md` §7 defers
+it) and no VM-only binary — `whitefang` already does lex → parse →
+compile → execute in one process, so there was only ever one thing to
+containerize.
+
+`scratch` (rather than `alpine`) was considered for the runtime image
+for a smaller footprint, but requires a fully static binary — which
+would mean adding `-static` to the project's build flags, a change to
+the core `Makefile` (affecting every build, not just Docker's) for a
+size saving that didn't seem worth that coupling. `alpine`'s musl libc
+runs the dynamically-linked binary as-is, no build changes needed, at
+an already-small ~12MB.
 
 ### Build tooling: plain Makefile, C11, `-Wall -Wextra -Werror`
 
